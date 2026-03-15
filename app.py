@@ -436,22 +436,46 @@ Return ONLY valid JSON — no extra text:
 Generate exactly 5 questions. Make them appropriate for {grade}. Mix easy, medium and slightly challenging questions."""
 
 def call_llm(client, system_prompt, user_message, image_b64=None):
-    content = []
     if image_b64:
-        content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}})
-    content.append({"type": "text", "text": user_message})
+        # Use vision model for photos
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{image_b64}"
+                        }
+                    },
+                    {
+                        "type": "text",
+                        "text": user_message
+                    }
+                ]
+            }
+        ]
+        response = client.chat.completions.create(
+            model="llama-3.2-90b-vision-preview",  # ✅ Vision model
+            messages=messages,
+            temperature=0.5,
+            max_tokens=1200,
+        )
+    else:
+        # Use text model for normal questions
+        history = [{"role": "system", "content": system_prompt}]
+        for msg in st.session_state.messages[-8:]:
+            history.append({"role": msg["role"], "content": msg["content"]})
+        history.append({"role": "user", "content": user_message})
 
-    history = [{"role": "system", "content": system_prompt}]
-    for msg in st.session_state.messages[-8:]:  # last 8 for context
-        history.append({"role": msg["role"], "content": msg["content"]})
-    history.append({"role": "user", "content": content if image_b64 else user_message})
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",  # ✅ Text model
+            messages=history,
+            temperature=0.5,
+            max_tokens=1200,
+        )
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=history,
-        temperature=0.5,
-        max_tokens=1200,
-    )
     return response.choices[0].message.content.strip()
 
 def parse_json_response(raw):
